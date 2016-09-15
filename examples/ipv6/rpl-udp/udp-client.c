@@ -28,6 +28,7 @@
  */
 
 #include "contiki.h"
+#include "contiki-conf.h"
 #include "lib/random.h"
 #include "sys/ctimer.h"
 #include "net/ip/uip.h"
@@ -39,10 +40,11 @@
 #endif
 #include <stdio.h>
 #include <string.h>
+#include "net/rpl/rpl-private.h"
 
 /* Only for TMOTE Sky? */
-#include "dev/serial-line.h"
-#include "dev/uart1.h"
+//#include "dev/serial-line.h"
+//#include "dev/uart1.h"
 #include "net/ipv6/uip-ds6-route.h"
 
 #define UDP_CLIENT_PORT 8765
@@ -101,8 +103,9 @@ send_packet(void *ptr)
   }
 
   if(seq_id > 0) {
-    ANNOTATE("#A r=%d/%d,color=%s,n=%d %d\n", reply, seq_id,
-             reply == seq_id ? "GREEN" : "RED", uip_ds6_route_num_routes(), num_used);
+    ANNOTATE("#A r=%d/%d,color=%s,n=%d %d,ps=%d\n", reply, seq_id,
+             reply == seq_id ? "GREEN" : "RED", uip_ds6_route_num_routes(), num_used,
+	     rpl_stats.parent_switch);
   }
 #endif /* SERVER_REPLY */
 
@@ -198,10 +201,14 @@ PROCESS_THREAD(udp_client_process, ev, data)
   PRINT6ADDR(&client_conn->ripaddr);
   PRINTF(" local/remote port %u/%u\n",
 	UIP_HTONS(client_conn->lport), UIP_HTONS(client_conn->rport));
-
+#ifdef RPL_CONF_WITH_DAO_ACK
+  PRINTF("DAO ACK enabled\n");
+#else
+  PRINTF("DAO ACK disabled\n");
+#endif
   /* initialize serial line */
-  uart1_set_input(serial_line_input_byte);
-  serial_line_init();
+  //  uart1_set_input(serial_line_input_byte);
+  // serial_line_init();
 
 
 #if WITH_COMPOWER
@@ -215,39 +222,39 @@ PROCESS_THREAD(udp_client_process, ev, data)
       tcpip_handler();
     }
 
-    if(ev == serial_line_event_message && data != NULL) {
-      char *str;
-      str = data;
-      if(str[0] == 'r') {
-        uip_ds6_route_t *r;
-        uip_ipaddr_t *nexthop;
-        uip_ds6_defrt_t *defrt;
-        uip_ipaddr_t *ipaddr;
-        defrt = NULL;
-        if((ipaddr = uip_ds6_defrt_choose()) != NULL) {
-          defrt = uip_ds6_defrt_lookup(ipaddr);
-        }
-        if(defrt != NULL) {
-          PRINTF("DefRT: :: -> %02d", defrt->ipaddr.u8[15]);
-          PRINTF(" lt:%lu inf:%d\n", stimer_remaining(&defrt->lifetime),
-                 defrt->isinfinite);
-        } else {
-          PRINTF("DefRT: :: -> NULL\n");
-        }
+    /* if(ev == serial_line_event_message && data != NULL) { */
+    /*   char *str; */
+    /*   str = data; */
+    /*   if(str[0] == 'r') { */
+    /*     uip_ds6_route_t *r; */
+    /*     uip_ipaddr_t *nexthop; */
+    /*     uip_ds6_defrt_t *defrt; */
+    /*     uip_ipaddr_t *ipaddr; */
+    /*     defrt = NULL; */
+    /*     if((ipaddr = uip_ds6_defrt_choose()) != NULL) { */
+    /*       defrt = uip_ds6_defrt_lookup(ipaddr); */
+    /*     } */
+    /*     if(defrt != NULL) { */
+    /*       PRINTF("DefRT: :: -> %02d", defrt->ipaddr.u8[15]); */
+    /*       PRINTF(" lt:%lu inf:%d\n", stimer_remaining(&defrt->lifetime), */
+    /*              defrt->isinfinite); */
+    /*     } else { */
+    /*       PRINTF("DefRT: :: -> NULL\n"); */
+    /*     } */
 
-        for(r = uip_ds6_route_head();
-            r != NULL;
-            r = uip_ds6_route_next(r)) {
-          nexthop = uip_ds6_route_nexthop(r);
-          PRINTF("Route: %02d -> %02d", r->ipaddr.u8[15], nexthop->u8[15]);
-          /* PRINT6ADDR(&r->ipaddr); */
-          /* PRINTF(" -> "); */
-          /* PRINT6ADDR(nexthop); */
-          PRINTF(" lt:%lu\n", r->state.lifetime);
+    /*     for(r = uip_ds6_route_head(); */
+    /*         r != NULL; */
+    /*         r = uip_ds6_route_next(r)) { */
+    /*       nexthop = uip_ds6_route_nexthop(r); */
+    /*       PRINTF("Route: %02d -> %02d", r->ipaddr.u8[15], nexthop->u8[15]); */
+    /*       /\* PRINT6ADDR(&r->ipaddr); *\/ */
+    /*       /\* PRINTF(" -> "); *\/ */
+    /*       /\* PRINT6ADDR(nexthop); *\/ */
+    /*       PRINTF(" lt:%lu\n", r->state.lifetime); */
 
-        }
-      }
-    }
+    /*     } */
+    /*   } */
+    /* } */
 
     if(etimer_expired(&periodic)) {
       etimer_reset(&periodic);

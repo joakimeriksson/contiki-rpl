@@ -37,14 +37,16 @@
 #undef NBR_TABLE_CONF_MAX_NEIGHBORS
 #undef UIP_CONF_MAX_ROUTES
 
-#ifdef TEST_MORE_ROUTES
+#if TEST_MORE_ROUTES
 /* configure number of neighbors and routes */
-#define NBR_TABLE_CONF_MAX_NEIGHBORS     10
-#define UIP_CONF_MAX_ROUTES   30
+#define NBR_TABLE_CONF_MAX_NEIGHBORS     100
+#define UIP_CONF_MAX_ROUTES   200
+#define UIP_CONF_DS6_ROUTE_NBU 200
 #else
 /* configure number of neighbors and routes */
-#define NBR_TABLE_CONF_MAX_NEIGHBORS     10
-#define UIP_CONF_MAX_ROUTES   10
+#define NBR_TABLE_CONF_MAX_NEIGHBORS     100
+#define UIP_CONF_MAX_ROUTES   20
+#define UIP_CONF_DS6_ROUTE_NBU 20
 #endif /* TEST_MORE_ROUTES */
 
 #undef NETSTACK_CONF_RDC
@@ -56,9 +58,12 @@
 #define RPL_CONF_DEFAULT_LIFETIME_UNIT   60
 
 /* 10 minutes lifetime of routes */
-#define RPL_CONF_DEFAULT_LIFETIME        10
+#define RPL_CONF_DEFAULT_LIFETIME        30
 
 #define RPL_CONF_DEFAULT_ROUTE_INFINITE_LIFETIME 1
+
+#define RPL_CONF_STATS 1
+#define RPL_REPAIR_ON_DAO_NACK 1
 
 #ifndef RPL_CONF_WITH_NON_STORING
 #define RPL_CONF_WITH_NON_STORING 0 /* Set this to run with non-storing mode */

@@ -165,7 +165,6 @@ uip_ds6_route_init(void)
   nbr_table_register(nbr_routes,
                      (nbr_table_callback *)rm_routelist_callback);
 #endif /* (UIP_CONF_MAX_ROUTES != 0) */
-
   memb_init(&defaultroutermemb);
   list_init(defaultrouterlist);
 
