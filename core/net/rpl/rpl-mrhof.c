@@ -108,9 +108,11 @@ dao_ack_callback(rpl_parent_t *p, int status)
   if(status >= RPL_DAO_ACK_UNABLE_TO_ACCEPT) {
     /* punish the ETX as if this was 10 packets lost */
     link_stats_packet_sent(rpl_get_parent_lladdr(p), MAC_TX_OK, 10);
+    rpl_link_neighbor_callback(rpl_get_parent_lladdr(p), MAC_TX_OK, 10);
   } else if(status == RPL_DAO_ACK_TIMEOUT) { /* timeout = no ack */
     /* punish the total lack of ACK with a similar punishment */
     link_stats_packet_sent(rpl_get_parent_lladdr(p), MAC_TX_OK, 10);
+    rpl_link_neighbor_callback(rpl_get_parent_lladdr(p), MAC_TX_OK, 10);
   }
 }
 #endif /* RPL_WITH_DAO_ACK */
@@ -182,6 +184,19 @@ parent_is_acceptable(rpl_parent_t *p)
 {
   uint16_t link_metric = parent_link_metric(p);
   uint16_t path_cost = parent_path_cost(p);
+
+#if RPL_CONF_MC_NSA_FREE_ROUTES
+  /* If there are no routes - this parent should not be used - unless it is
+     already the preferred parent */
+  if(p->dag == NULL) {
+    return 0;
+  }
+  /* Do not accept any other parent with zero routes than the the parent */
+  if(p->routes_free == 0 && p->dag->preferred_parent != p) {
+    return 0;
+  }
+#endif /* RPL_CONF_MC_NSA_FREE_ROUTES */
+
   /* Exclude links with too high link metrics or path cost (RFC6719, 3.2.2) */
   return link_metric <= MAX_LINK_METRIC && path_cost <= MAX_PATH_COST;
 }
@@ -246,7 +261,23 @@ best_dag(rpl_dag_t *d1, rpl_dag_t *d2)
 static void
 update_metric_container(rpl_instance_t *instance)
 {
-  instance->mc.type = RPL_DAG_MC_NONE;
+#if RPL_CONF_MC_NSA_FREE_ROUTES
+  uint8_t rfree = 0;
+  instance->mc.type = RPL_DAG_MC_NSA;
+  if(instance->current_dag != NULL && instance->current_dag->preferred_parent != NULL) {
+    rfree = instance->current_dag->preferred_parent->routes_free;
+  }
+
+  if(instance->current_dag->rank == ROOT_RANK(instance) ||
+     rfree > UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes()) {
+    rfree = UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes();
+  }
+  PRINTF("MRHOF: Setting free routes to :%d (%d)\n", rfree,
+    UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes());
+  instance->mc.obj.routes_free = rfree;
+#else
+ instance->mc.type = RPL_DAG_MC_NONE;
+#endif /* RPL_CONF_MC_NSA_FREE_ROUTES */
 }
 #else /* RPL_WITH_MC */
 static void

@@ -1584,6 +1584,10 @@ rpl_process_dio(uip_ipaddr_t *from, rpl_dio_t *dio)
   }
   p->rank = dio->rank;
 
+  if(dio->mc.type == RPL_DAG_MC_NSA) {
+    p->routes_free = dio->mc.obj.routes_free;
+  }
+
   if(dio->rank == INFINITE_RANK && p == dag->preferred_parent) {
     /* Our preferred parent advertised an infinite rank, reset DIO timer */
     rpl_reset_dio_timer(instance);

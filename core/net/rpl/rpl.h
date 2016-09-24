@@ -91,6 +91,10 @@ struct rpl_metric_object_energy {
   uint8_t energy_est;
 };
 
+/* Define a TLV for route free T L V = type = 1 length = 1 value [routes free] -*/
+
+#define RPL_MC_TLV_ROUTE_FREE_TYPE 1
+
 /* Logical representation of a DAG Metric Container. */
 struct rpl_metric_container {
   uint8_t type;
@@ -101,6 +105,7 @@ struct rpl_metric_container {
   union metric_object {
     struct rpl_metric_object_energy energy;
     uint16_t etx;
+    uint16_t routes_free; /* from a TLV object */
   } obj;
 };
 typedef struct rpl_metric_container rpl_metric_container_t;
@@ -119,6 +124,7 @@ struct rpl_parent {
   rpl_rank_t rank;
   uint8_t dtsn;
   uint8_t flags;
+  uint8_t routes_free; /* this is number of "path" routes for this parent */
 };
 typedef struct rpl_parent rpl_parent_t;
 /*---------------------------------------------------------------------------*/

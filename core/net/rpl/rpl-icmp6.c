@@ -377,6 +377,8 @@ dio_input(void)
       dio.mc.prec = buffer[i + 4] & 0xf;
       dio.mc.length = buffer[i + 5];
 
+      PRINTF("RPL: MC - type: %d len: %d\n", dio.mc.type, dio.mc.length);
+
       if(dio.mc.type == RPL_DAG_MC_NONE) {
         /* No metric container: do nothing */
       } else if(dio.mc.type == RPL_DAG_MC_ETX) {
@@ -392,6 +394,15 @@ dio_input(void)
       } else if(dio.mc.type == RPL_DAG_MC_ENERGY) {
         dio.mc.obj.energy.flags = buffer[i + 6];
         dio.mc.obj.energy.energy_est = buffer[i + 7];
+      } else if(dio.mc.type == RPL_DAG_MC_NSA) {
+        /* Two first bytes are reserved and flags */
+        if(buffer[i + 8] == RPL_MC_TLV_ROUTE_FREE_TYPE && buffer[i + 9] == 1) {
+          dio.mc.obj.routes_free = buffer[i + 10];
+          printf("RPL: got routes free from DIO %d\n", buffer[i + 10]);
+        } else {
+          PRINTF("RPL: got NSA of wrong format T:%d L:%d\n", buffer[i + 8],
+                 buffer[i + 9]);
+        }
       } else {
        PRINTF("RPL: Unhandled DAG MC type: %u\n", (unsigned)dio.mc.type);
        goto discard;
@@ -537,10 +548,12 @@ dio_output(rpl_instance_t *instance, uip_ipaddr_t *uc_addr)
 
 #if !RPL_LEAF_ONLY
   if(instance->mc.type != RPL_DAG_MC_NONE) {
+    int len_pos = 0;
     instance->of->update_metric_container(instance);
 
     buffer[pos++] = RPL_OPTION_DAG_METRIC_CONTAINER;
-    buffer[pos++] = 6;
+    len_pos = pos;
+    buffer[pos++] = 6; /* if longer than 6 - need to update this */
     buffer[pos++] = instance->mc.type;
     buffer[pos++] = instance->mc.flags >> 1;
     buffer[pos] = (instance->mc.flags & 1) << 7;
@@ -553,6 +566,15 @@ dio_output(rpl_instance_t *instance, uip_ipaddr_t *uc_addr)
       buffer[pos++] = 2;
       buffer[pos++] = instance->mc.obj.energy.flags;
       buffer[pos++] = instance->mc.obj.energy.energy_est;
+    } else if(instance->mc.type == RPL_DAG_MC_NSA) {
+      buffer[len_pos] = 4 + 5; /* 9 instead of 6 in length */
+      buffer[pos++] = 5; /* length of MC */
+      buffer[pos++] = 0; /* reserved */
+      buffer[pos++] = 0; /* flags */
+      buffer[pos++] = RPL_MC_TLV_ROUTE_FREE_TYPE; /* Type = 1 => routes free */
+      buffer[pos++] = 1; /* Len = 1 */
+      buffer[pos++] = instance->mc.obj.routes_free;
+      printf("RPL - output DIO with routes-free: %d\n", instance->mc.obj.routes_free);
     } else {
       PRINTF("RPL: Unable to send DIO because of unhandled DAG MC type %u\n",
 	(unsigned)instance->mc.type);
@@ -1304,6 +1326,7 @@ dao_ack_input(void)
        * Failed the DAO transmission - need to remove the default route.
        * Trigger a local repair since we can not get our DAO in.
        */
+      printf("Trigger local repair on DAO NACK...\n");
       rpl_local_repair(instance);
     }
 #endif
