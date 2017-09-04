@@ -184,6 +184,13 @@ parent_is_acceptable(rpl_parent_t *p)
 {
   uint16_t link_metric = parent_link_metric(p);
   uint16_t path_cost = parent_path_cost(p);
+  const struct link_stats *stats = rpl_get_parent_link_stats(p);
+
+  /* Ensure good link */
+  /* if(!link_stats_is_fresh(stats)) { */
+  /*   printf("*** Parent not fresh...\n"); */
+  /*   return 0; */
+  /* } */
 
 #if RPL_CONF_MC_NSA_FREE_ROUTES
   /* If there are no routes - this parent should not be used - unless it is
@@ -266,10 +273,11 @@ update_metric_container(rpl_instance_t *instance)
   instance->mc.type = RPL_DAG_MC_NSA;
   if(instance->current_dag != NULL && instance->current_dag->preferred_parent != NULL) {
     rfree = instance->current_dag->preferred_parent->routes_free;
+    PRINTF("MRHOF: Setting routes free from parent:%d", rfree);
   }
 
   if(instance->current_dag->rank == ROOT_RANK(instance) ||
-     rfree > UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes()) {
+    (rfree > UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes())) {
     rfree = UIP_CONF_MAX_ROUTES - uip_ds6_route_num_routes();
   }
   PRINTF("MRHOF: Setting free routes to :%d (%d)\n", rfree,

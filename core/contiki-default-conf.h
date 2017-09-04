@@ -143,9 +143,12 @@
 
 /* If RPL is enabled also enable the RPL NBR Policy */
 #if UIP_CONF_IPV6_RPL
+#if NO_RPL_NBR_POLICY
+#else
 #ifndef NBR_TABLE_FIND_REMOVABLE
 #define NBR_TABLE_FIND_REMOVABLE rpl_nbr_policy_find_removable
 #endif /* NBR_TABLE_FIND_REMOVABLE */
+#endif /* NO_RPL_NBR_POLICY */
 #endif /* UIP_CONF_IPV6_RPL */
 
 /* RPL_CONF_MOP specifies the RPL mode of operation that will be

@@ -49,7 +49,7 @@
 #include "net/ipv6/uip-ds6-nbr.h"
 #include "net/ipv6/uip-ds6-route.h"
 
-#define DEBUG DEBUG_NONE
+#define DEBUG DEBUG_FULL
 #include "net/ip/uip-debug.h"
 
 /*
@@ -62,7 +62,7 @@
  * NOTE: this policy assumes that all neighbors end up being IPv6
  * neighbors and are not only MAC neighbors.
  */
-#define MAX_CHILDREN (NBR_TABLE_MAX_NEIGHBORS - 2)
+#define MAX_CHILDREN (NBR_TABLE_MAX_NEIGHBORS - 3)
 #define UIP_IP_BUF       ((struct uip_ip_hdr *)&uip_buf[UIP_LLH_LEN])
 
 static int num_parents; /* any node that are possible parents */
@@ -70,6 +70,7 @@ static int num_children;  /* all children that we have as nexthop */
 static int num_free;
 static linkaddr_t *worst_rank_nbr; /* the parent that has the worst rank */
 static rpl_rank_t worst_rank;
+
 /*---------------------------------------------------------------------------*/
 #if DEBUG == DEBUG_FULL
 /*
@@ -87,6 +88,131 @@ handle_periodic_timer(void *ptr)
 }
 #endif /* DEBUG == DEBUG_FULL */
 /*---------------------------------------------------------------------------*/
+
+/* 0 => default policy */
+/* 1 => modifiable "dummy" policy */
+
+/* Default policy if not set - P_LOCK is not used for other than print...*/
+#ifndef POLICY
+#define POLICY 0
+#define P_LOCK 0
+#endif
+
+/* This will "soft" lock - e.g. only children + RPL parent is locked */
+#if POLICY == 1
+#define P_LOCK 1
+#endif
+
+/* This will lock hard - anything in the nbr table */
+#if POLICY == 2
+#define P_LOCK 2
+#endif
+
+/* This is the non-locking (churn) policy */
+#if POLICY == 3
+#define P_LOCK 0
+#endif
+
+
+void
+rpl_nbr_policy_print_config(void)
+{
+  printf("NBR-Policy: config: policy: %d  Lock:%d\n",
+         POLICY, P_LOCK);
+}
+
+#if POLICY > 0
+/* This policy is a locking policy that removes only "worst" parents */
+static void
+update_nbr(void)
+{
+  uip_ds6_nbr_t *nbr;
+  rpl_parent_t *parent;
+  int num_used;
+  int is_used;
+  clock_time_t worst_remain;
+
+#if DEBUG == DEBUG_FULL
+  if(!timer_init) {
+    timer_init = 1;
+    ctimer_set(&periodic_timer, 60 * CLOCK_SECOND,
+               &handle_periodic_timer, NULL);
+  }
+#endif /* DEBUG == DEBUG_FULL */
+
+  /* worst rank will be least time left to timeout */
+  worst_remain = 0xffffff;
+  worst_rank_nbr = NULL;
+  num_used = 0;
+  num_parents = 0;
+  num_children = 0;
+
+  nbr = nbr_table_head(ds6_neighbors);
+  while(nbr != NULL) {
+    linkaddr_t *lladdr = nbr_table_get_lladdr(ds6_neighbors, nbr);
+    is_used = 0;
+
+#if P_LOCK == 2
+      /* The locking policy (2) will lock the node if it is used here */
+      is_used++;
+#endif
+
+    /*
+     * Check if this neighbor is used as nexthop and therefor being a
+     * RPL child.
+    */
+
+    if(uip_ds6_route_is_nexthop(&nbr->ipaddr) != 0) {
+      // - this is allowing any child to be removed... is_used++;
+#if P_LOCK == 1
+      /* The locking policy will lock all children */
+      is_used++;
+#endif
+      num_children++;
+    }
+
+    parent = rpl_get_parent((uip_lladdr_t *)lladdr);
+    if(parent != NULL) {
+      num_parents++;
+
+      if(parent->dag != NULL && parent->dag->preferred_parent == parent) {
+        /*
+         * This is the preferred parent for the DAG and must not be removed
+         * Note: this assumes that only RPL adds default routes.
+         */
+      } else if(is_used == 0 && stimer_remaining(&nbr->reachable) < worst_remain) {
+        /* This is the worst-remaining neighbor - this is a good candidate for removal */
+        worst_remain = stimer_remaining(&nbr->reachable);
+        worst_rank_nbr = lladdr;
+        PRINTF("Found new worst nbr: %d ", (int) worst_remain);
+        PRINTLLADDR((uip_lladdr_t *)lladdr);
+        PRINTF("\n");
+      }
+      /* add to is_used after evaluation of is_used above */
+      is_used++;
+    }
+
+    if(is_used == 0) {
+      /* This neighbor is neither parent or child and can be safely removed */
+      worst_rank_nbr = lladdr;
+      worst_remain = 0;
+    } else if(is_used > 1) {
+      /* PRINTF("NBR-POLICY: *** Neighbor is both child and candidate parent: "); */
+      /* PRINTLLADDR((uip_lladdr_t *)lladdr); */
+      /* PRINTF("\n"); */
+    }
+
+    nbr = nbr_table_next(ds6_neighbors, nbr);
+    num_used++;
+  }
+  /* how many more IP neighbors can be have? */
+  num_free = NBR_TABLE_MAX_NEIGHBORS - num_used;
+
+
+  PRINTF("NBR-POLICY(1): Free: %d, Children: %d, Parents: %d Routes: %d\n",
+	 num_free, num_children, num_parents, uip_ds6_route_num_routes());
+}
+#else /* This is the default nbr policy in upstream contiki */
 static void
 update_nbr(void)
 {
@@ -152,9 +278,9 @@ update_nbr(void)
       worst_rank_nbr = lladdr;
       worst_rank = INFINITE_RANK;
     } else if(is_used > 1) {
-      PRINTF("NBR-POLICY: *** Neighbor is both child and candidate parent: ");
-      PRINTLLADDR((uip_lladdr_t *)lladdr);
-      PRINTF("\n");
+      /* PRINTF("NBR-POLICY: *** Neighbor is both child and candidate parent: "); */
+      /* PRINTLLADDR((uip_lladdr_t *)lladdr); */
+      /* PRINTF("\n"); */
     }
 
     nbr = nbr_table_next(ds6_neighbors, nbr);
@@ -163,9 +289,20 @@ update_nbr(void)
   /* how many more IP neighbors can be have? */
   num_free = NBR_TABLE_MAX_NEIGHBORS - num_used;
 
-  PRINTF("NBR-POLICY: Free: %d, Children: %d, Parents: %d Routes: %d\n",
+  PRINTF("NBR-POLICY(0): Free: %d, Children: %d, Parents: %d Routes: %d\n",
 	 num_free, num_children, num_parents, uip_ds6_route_num_routes());
 }
+#endif
+/*---------------------------------------------------------------------------*/
+
+int
+rpl_child_at_max()
+{
+  update_nbr();
+  return !(num_children < MAX_CHILDREN);
+}
+
+
 /*---------------------------------------------------------------------------*/
 /* Called whenever we get a unicast DIS - e.g. someone that already
    have this node in its table - since it is a unicast */
@@ -202,14 +339,14 @@ find_removable_dio(uip_ipaddr_t *from, rpl_dio_t *dio)
   /* Add the new neighbor only if it is better than the worst parent. */
   if(dio->rank + instance->min_hoprankinc < worst_rank - instance->min_hoprankinc / 2) {
     /* Found *great* neighbor - add! */
-    PRINTF("Found better neighbor %d < %d - add to cache...\n",
-           rank, worst_rank);
+    PRINTF("Found better neighbor %d < %d - add to cache %p.\n",
+           dio->rank, worst_rank, worst_rank_nbr);
 
     return worst_rank_nbr;
   }
 
   PRINTF("Found worse neighbor with new %d and old %d - NOT add to cache.\n",
-         rank, worst_rank);
+         dio->rank, worst_rank);
   return NULL;
 }
 /*---------------------------------------------------------------------------*/
@@ -239,6 +376,19 @@ find_removable_dao(uip_ipaddr_t *from, rpl_instance_t *instance)
 const linkaddr_t *
 rpl_nbr_policy_find_removable(nbr_table_reason_t reason,void * data)
 {
+  /* The default policy needs the behaviour that takes care of looking at
+     "reason" also - dummy policies just remove the worst_rank_nbr */
+#if POLICY != 0
+  update_nbr();
+
+  if(worst_rank_nbr != NULL) {
+    PRINTF("Removing %d for %d\n", worst_rank_nbr->u8[7], UIP_IP_BUF->srcipaddr.u8[15]);
+  } else {
+    PRINTF("Nothing to remove\n");
+  }
+
+  return worst_rank_nbr;
+#else
   /* When we get the DIO/DAO/DIS we know that UIP contains the
      incoming packet */
   switch(reason) {
@@ -251,6 +401,7 @@ rpl_nbr_policy_find_removable(nbr_table_reason_t reason,void * data)
   default:
     return NULL;
   }
+#endif
 }
 /*---------------------------------------------------------------------------*/
 /** @}*/

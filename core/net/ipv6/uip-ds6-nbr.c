@@ -341,5 +341,6 @@ uip_ds6_get_least_lifetime_neighbor(void)
   return nbr_expiring;
 }
 #endif /* UIP_ND6_SEND_NA */
+
 /*---------------------------------------------------------------------------*/
 /** @} */

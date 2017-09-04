@@ -81,6 +81,10 @@ static void dao_ack_input(void);
 static void dao_output_target_seq(rpl_parent_t *parent, uip_ipaddr_t *prefix,
 				  uint8_t lifetime, uint8_t seq_no);
 
+/* From the rpl-nbr-policy */
+
+int rpl_child_at_max();
+
 /* some debug callbacks useful when debugging RPL networks */
 #ifdef RPL_DEBUG_DIO_INPUT
 void RPL_DEBUG_DIO_INPUT(uip_ipaddr_t *, rpl_dio_t *);
@@ -209,6 +213,18 @@ rpl_icmp6_update_nbr_table(uip_ipaddr_t *from, nbr_table_reason_t reason, void *
     nbr->state = NBR_REACHABLE;
 #endif /* UIP_ND6_SEND_NA */
   }
+
+#if 0
+  /* Check if we are at MAX according to the RPL nbr policy and this is a
+     new child  */
+  if(reason == NBR_TABLE_REASON_RPL_DAO &&
+     rpl_child_at_max() && !uip_ds6_route_is_nexthop(from)) {
+    printf("//// NO DAO since we are already at max children\n");
+    return NULL;
+  }
+#endif
+
+
   return nbr;
  }
 /*---------------------------------------------------------------------------*/
@@ -398,7 +414,7 @@ dio_input(void)
         /* Two first bytes are reserved and flags */
         if(buffer[i + 8] == RPL_MC_TLV_ROUTE_FREE_TYPE && buffer[i + 9] == 1) {
           dio.mc.obj.routes_free = buffer[i + 10];
-          printf("RPL: got routes free from DIO %d\n", buffer[i + 10]);
+          PRINTF("RPL: got routes free from DIO %d\n", buffer[i + 10]);
         } else {
           PRINTF("RPL: got NSA of wrong format T:%d L:%d\n", buffer[i + 8],
                  buffer[i + 9]);
@@ -574,7 +590,7 @@ dio_output(rpl_instance_t *instance, uip_ipaddr_t *uc_addr)
       buffer[pos++] = RPL_MC_TLV_ROUTE_FREE_TYPE; /* Type = 1 => routes free */
       buffer[pos++] = 1; /* Len = 1 */
       buffer[pos++] = instance->mc.obj.routes_free;
-      printf("RPL - output DIO with routes-free: %d\n", instance->mc.obj.routes_free);
+      PRINTF("RPL - output DIO with routes-free: %d\n", instance->mc.obj.routes_free);
     } else {
       PRINTF("RPL: Unable to send DIO because of unhandled DAG MC type %u\n",
 	(unsigned)instance->mc.type);

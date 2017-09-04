@@ -1098,6 +1098,15 @@ rpl_join_instance(uip_ipaddr_t *from, rpl_dio_t *dio)
     return;
   }
 
+  /* Check availability of routing downward */
+  if(dio->mc.type == RPL_DAG_MC_NSA) {
+    if(dio->mc.obj.routes_free == 0) {
+      /* TODO: also neet to check mode of operation */
+      printf("Not joining due to no routes in parent \n");
+      return;
+    }
+  }
+
   dag = rpl_alloc_dag(dio->instance_id, &dio->dag_id);
   if(dag == NULL) {
     PRINTF("RPL: Failed to allocate a DAG object!\n");
@@ -1151,6 +1160,10 @@ rpl_join_instance(uip_ipaddr_t *from, rpl_dio_t *dio)
 
   /* Copy prefix information from the DIO into the DAG object. */
   memcpy(&dag->prefix_info, &dio->prefix_info, sizeof(rpl_prefix_t));
+
+  if(dio->mc.type == RPL_DAG_MC_NSA) {
+    p->routes_free = dio->mc.obj.routes_free;
+  }
 
   rpl_set_preferred_parent(dag, p);
   instance->of->update_metric_container(instance);
@@ -1420,11 +1433,24 @@ static int
 add_nbr_from_dio(uip_ipaddr_t *from, rpl_dio_t *dio)
 {
   /* add this to the neighbor cache if not already there */
-  if(rpl_icmp6_update_nbr_table(from, NBR_TABLE_REASON_RPL_DIO, dio) == NULL) {
+
+  const uip_ds6_nbr_t *nbr;
+  int existed_before;
+  nbr = uip_ds6_nbr_lookup(from);
+  existed_before = nbr != NULL;
+
+  if((nbr = rpl_icmp6_update_nbr_table(from, NBR_TABLE_REASON_RPL_DIO, dio)) == NULL) {
     PRINTF("RPL: Out of memory, dropping DIO from ");
     PRINT6ADDR(from);
     PRINTF("\n");
     return 0;
+  }
+  /* Needed since the rpl-nbr-policy is called after the link-stats module */
+  if((!existed_before) && (nbr != NULL)) {
+    /* Now we might have added a new parent from an incoming DIO */
+    const uip_lladdr_t *lladdr;
+    lladdr = uip_ds6_nbr_get_ll(nbr);
+    link_stats_input_callback((const linkaddr_t *) lladdr);
   }
   return 1;
 }
